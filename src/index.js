@@ -1,149 +1,13 @@
 import { GraphQLServer } from "graphql-yoga";
 import uuidv4 from "uuid/v4";
+import db from "./db";
+import { Query } from "./resolvers/Query";
 
-// Scalar types: ID, String, Int, Boolean, Float
-
-const users = [
-  {
-    id: "1",
-    name: "lee",
-    email: "x@gmail.com",
-    age: 20
-  },
-  {
-    id: "2",
-    name: "james",
-    email: "leo@gmail.com",
-    age: 22
-  },
-  {
-    id: "3",
-    name: "HienP",
-    email: "leo@gmail.com",
-    age: 22
-  }
-];
-
-let posts = [
-  {
-    id: "1",
-    title: "react with graphql",
-    body: "xyz",
-    published: true,
-    author: "1"
-  },
-  {
-    id: "2",
-    title: "react with docker",
-    body: "xyz",
-    published: false,
-    author: "1"
-  },
-  {
-    id: "3",
-    title: "GraphQL 101",
-    body: "2312312",
-    published: false,
-    author: "2"
-  }
-];
-
-let comments = [
-  {
-    id: "1",
-    post: "1",
-    content: "cool i like it!",
-    author: "3"
-  },
-  {
-    id: "2",
-    post: "2",
-    content: "where are you?",
-    author: "3"
-  }
-];
-let typeDefs = `
-    type Query {
-      users(query: String): [User!]!
-      posts(query: String): [Post!]!
-      comments(query: String): [Comment!]!
-      me: User!
-      sum(numbers: [Float!]): Float!
-    }
-
-    type Mutation{
-      createUser(data: createUserInput): User!
-      createPost(title: String!, body: String!, published: Boolean!, author: ID!): Post!
-      createComment(post: String!, content: String!, author: String): Comment!
-      deleteUser(id: String!): User!
-    }
-
-    # input type
-    input createUserInput{
-      name: String!
-      email: String!
-      age: Int
-    }
-
-    type User{
-      id: ID!
-      name: String!
-      email: String!
-      age: Int
-      posts: [Post!]!
-      comments: [Comment!]!
-    }
-
-    type Post{
-      id: ID!
-      title: String!
-      body: String!
-      published: Boolean!
-      author: User!
-      comments: [Comment!]!
-    }
-    
-    type Comment{
-      id: ID!
-      content: String!
-      author: User!
-      post: Post!
-    }
-`;
 const resolvers = {
-  Query: {
-    me: () => {
-      return {
-        id: 1,
-        name: "lee",
-        email: "lee@gmail.com",
-        age: 20
-      };
-    },
-    posts(parent, argx) {
-      return posts;
-    },
-    users(parent, argx) {
-      if (argx.query) {
-        return users.filter(user => {
-          return user.name.toLowerCase().includes(argx.query.toLowerCase());
-        });
-      }
-      return users;
-    },
-    sum(parent, argx, ctx, info) {
-      if (argx.numbers.length === 0) {
-        return 0;
-      }
-      return argx.numbers.reduce((a, b) => a + b, 0);
-    },
-    comments() {
-      return comments;
-    }
-  },
+  Query,
   Mutation: {
     createUser(parent, agrs, ctx, info) {
-      const emailTaken = users.some(u => u.email === agrs.data.email);
+      const emailTaken = ctx.db.users.some(u => u.email === agrs.data.email);
       if (emailTaken) {
         throw new Error("Email has taken");
       }
@@ -153,32 +17,56 @@ const resolvers = {
         ...agrs.data
       };
 
-      users.push(user);
+      ctx.db.users.push(user);
       return user;
     },
-    deleteUser(parent, agrs) {
-      const userIndex = users.findIndex(x => x.id === agrs.id);
+    deleteUser(parent, agrs, ctx) {
+      const userIndex = ctx.db.users.findIndex(x => x.id === agrs.id);
 
       if (userIndex === -1) {
         throw new Error("User not existed");
       }
 
-      const deletedUser = users.splice(userIndex, 1);
-      posts = psots.filter(c => {
+      const deletedUser = ctx.db.users.splice(userIndex, 1);
+      ctx.db.posts = ctx.db.posts.filter(c => {
         const match = c.author === agrs.id;
 
         if (match) {
-          comments = comments.filter(c => c.post !== c.id);
+          ctx.db.comments = ctx.db.comments.filter(c => c.post !== c.id);
         }
 
         return !match;
       });
-      comments = comments.filter(p => p.author !== agrs.id);
+      ctx.db.comments = ctx.db.comments.filter(p => p.author !== agrs.id);
 
       return deletedUser[0];
     },
+    updateUser(parent, { id, data }, ctx) {
+      let user = ctx.db.users.find(u => u.id === id);
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      if (typeof data.email === "string") {
+        const emailTaken = ctx.db.users.some(
+          u => u.email === data.email && u.id !== id
+        );
+        if (emailTaken) {
+          throw new Error("Email is taken");
+        }
+        user.email = data.email;
+      }
+      if (typeof data.name === "string") {
+        user.name = data.name;
+      }
+
+      if (typeof data.age !== "undefined") {
+        user.age = data.age;
+      }
+      return user;
+    },
     createPost(parent, agrs, ctx, info) {
-      const existedUser = users.some(u => u.id === agrs.author);
+      const existedUser = ctx.db.users.some(u => u.id === agrs.author);
       if (!existedUser) {
         throw new Error("User not existed");
       }
@@ -188,16 +76,24 @@ const resolvers = {
         ...agrs
       };
 
-      posts.push(post);
+      ctx.db.posts = ctx.db.psots.filter(c => {
+        const match = c.author === agrs.id;
+
+        if (match) {
+          comments = ctx.db.comments.filter(c => c.post !== c.id);
+        }
+
+        return !match;
+      });
       return post;
     },
-    createComment(parent, agrs) {
-      const existedUser = users.some(u => u.id === agrs.author);
+    createComment(parent, agrs, ctx) {
+      const existedUser = ctx.db.users.some(u => u.id === agrs.author);
       if (!existedUser) {
         throw new Error("User not existed");
       }
 
-      const postExists = posts.some(
+      const postExists = ctx.db.posts.some(
         p => p.id === agrs.post && p.published === true
       );
 
@@ -210,41 +106,72 @@ const resolvers = {
         ...agrs
       };
 
-      comments.push(comment);
+      ctx.db.comments.push(comment);
       return comment;
+    },
+    deteleComment(parent, agrs, ctx) {
+      const commentIndex = ctx.db.comments.findIndex(c => c.id === agrs.id);
+
+      if (commentIndex === -1) {
+        throw new Error("Comment not existed");
+      }
+
+      const deletedComment = ctx.db.comments.splice(commentIndex, 1);
+      return deletedComment[0];
+    },
+    detelePost(parent, agrs, ctx) {
+      const postIndex = ctx.db.posts.findIndex(p => p.id === agrs.id);
+
+      if (postIndex === -1) {
+        throw new Error("Post not existed");
+      }
+
+      const deletedPost = ctx.db.posts.splice(postIndex, 1);
+      ctx.db.comments = ctx.db.comments.filter(c => c.post !== agrs.id);
+      return deletedPost[0];
     }
   },
   Post: {
     author(parent, argx, ctx, info) {
-      return users.find(x => x.id === parent.author);
+      return ctx.db.users.find(x => x.id === parent.author);
     },
-    comments(parent) {
-      return comments.filter(x => x.post === parent.id);
+    comments(parent, args, ctx) {
+      return ctx.db.comments.filter(x => x.post === parent.id);
     }
   },
   User: {
-    posts(parent, argx) {
-      return posts.filter(p => p.author === parent.id);
+    posts(parent, argx, ctx) {
+      return ctx.db.posts.filter(p => p.author === parent.id);
     },
-    comments(parent) {
-      return comments.filter(c => c.author === parent.id);
+    comments(parent, args, ctx) {
+      return ctx.db.comments.filter(c => c.author === parent.id);
     }
   },
   Comment: {
-    author(parent) {
-      return users.find(x => x.id === parent.author);
+    author(parent, args, ctx) {
+      return ctx.db.users.find(x => x.id === parent.author);
     },
     post(parent) {
-      return posts.find(p => p.id === parent.post);
+      return ctx.db.posts.find(p => p.id === parent.post);
     }
   }
 };
 
 const server = new GraphQLServer({
-  typeDefs,
-  resolvers
+  typeDefs: "./src/schema.graphql",
+  resolvers,
+  context: {
+    db
+  }
 });
 
-server.start(({ url }) => {
-  console.log(`Server is up and running !`);
+// const options = {
+//   port: 4000,
+//   endpoint: "/graphql",
+//   subscriptions: "/subscriptions",
+//   playground: "/playground"
+// };
+
+server.start(() => {
+  console.log(`Server is up and running on port!`);
 });
