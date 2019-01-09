@@ -21,6 +21,11 @@ type Mutation {
   updateUser(id: ID!, data: UpdateUserInput!): User!
 }
 
+type Subscription {
+  count: Int!
+  comment(postId: String): Comment!
+}
+
 # input type
 input createUserInput {
   name: String!
@@ -28,7 +33,7 @@ input createUserInput {
   age: Int
 }
 
-input UpdateUserInput{
+input UpdateUserInput {
   name: String
   email: String
   age: Int
