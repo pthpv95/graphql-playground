@@ -101,10 +101,14 @@ const Mutation = {
       id: uuidv4(),
       ...agrs
     };
-    console.log(comment);
 
     db.comments.push(comment);
-    pubSub.publish(`comment ${agrs.post}`, { comment });
+    pubSub.publish(`comment ${agrs.post}`, {
+      comment:{
+        mutation: 'CREATEE',
+        data: comment
+      }
+    });
     return comment;
   },
   deteleComment(parent, agrs, ctx) {
